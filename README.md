@@ -41,7 +41,7 @@ assignment.)
 
 ### Notes
 - when using uniform-initialization with auto-deduction (e.g. `auto i{1};`) it can produce a `initializer_list<T>{1}` instead of `T = 1`. This has changed in _C++17_! But for now it’s safer to use copy-initialization together with auto-deduction: `auto i = 1;`.
-- see section on [std::initializer_list](#std::initializer_list-(>=c++11))
+- see section on [std::initializer_list](#stdinitializer_list-c11)
 
 ## std::initializer_list (>=C++11)
 ### Syntax
@@ -908,7 +908,7 @@ foo(); // throws an exception. ‘o’ will be destroyed properly same as ‘p�
 	- all <u>stack</u> resources will be destroyed after an exception
 	- also local pointers will be destroyed but probably leaving
 the heap-memory unreferenced and create memory leaks
-	- -> see [RAII](#the-"resource-acquisition-is-initialization-(raii)-idiom) and [smart-pointers](#smart-pointers-(>=c++))
+	- -> see [RAII](#the-resource-acquisition-is-initialization-raii-idiom) and [smart-pointers](#smart-pointers-c11)
 - if an exception is thrown in a constructor, again all <u>stack-objects will be destroyed</u>,
 but the heap <u>will no be freed</u> and the <u>destructor will not be called</u>
 	- avoid allocation heap-memory in a constructor, instead use smart-pointers or
