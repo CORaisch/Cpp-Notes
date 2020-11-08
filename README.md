@@ -1000,3 +1000,107 @@ a huge value which could then overflow the stack.
 - VLAs are allowed in _C99_ (C Standard), that’s why some C++ compilers (like GCC/G++)
 allow them, too
 	- but be careful with usage!
+
+## Raw String Literals (>=C++11)
+### Examples
+```c++
+std::string path1{"C:\\path\\to\\file.txt"}; // classis strings: '\' are interpreted as escape symbol -> '\\' is interpreted as '\'-ASCII
+std::string path2{R"(C:\path\to\file.txt)"}; // raw string literal: All escape sequences are ignored (since C++11)
+std::string path3{R"DELIM(C:\path\to\file"(name)".txt)DELIM"}; // raw string literal with custom delimiter DELIM: Allows for embedding '"'
+```
+### Notes
+- `R"(...)"`: All symbols inside brackets are interpreted as ASCII
+	- no escape sequences will be provided
+- useful when processing paths, XML, HTML, regular expressions, etc.
+- can be used with custom delimiters  (see example above)
+
+## Filesystem Library (>=C++17)
+### Examples
+```c++
+#include <filesystem>
+std::filesystem::path p{"/home/user/file.txt"};
+p.has_filename(); // returns bool if path ends on a filename
+p.filename(); // returns string with the filename if existing
+for(const auto &x : p)	{ /* x would is: home, user, file.txt */ }
+std::filesystem::directory_iterator beg{path{"/home/user"}}; // '/home/user' is a directory
+std::filesystem::directory_iterator end{};
+while (beg != end) { /* *beg will iterate over each file and sub-directory in /home/user */ }
+std::filesystem::current_path(); // returns path object of current path
+std::filesystem::path src{std::filesystem::current_path()};
+src /= "file.txt"; // before: src=='/home/user', after: src=='/home/user/file.txt'
+```
+### Notes
+- the `path` class will <u>not</u> check for the validity of the path
+- `fstream`
+
+## fstream
+### Basic Examples
+```c++
+std::ifstream input{"file.txt"};
+std::ofstream output{"other.txt"};
+input.is_open(); // returns true if file is valid and loaded
+if (!input) { /* file couldn't be opened */ } // !-operator is overloaded
+input.good(); // returns true if all I/O operations were succesfull
+input.fail(); // returns true if some I/O operation failed
+input.eof(); // returns true if reached end of file
+input.bad(); // returns true if stream received irrecoverable errors
+input.clear(); // resets stream state flags
+input.setstate(std::ios::failbit); // will explicitly set the failbit
+std::string line;
+while (!std::getline(input, line).eof()) { /* iterate file.txt line by line */}
+char ch{};
+while (input.get(ch)) { /* iterate file char by char */ }
+ch = 'a'; output.put(c); // put char in text file
+input.tellg(); // returns current position in input stream (type: size_t)
+output.tellp(); // returns current position in output stream (type: size_t)
+input.seekg(10); // set input stream position to 10 bytes from current position
+output.seekp(10); // set output stream position to 10 bytes from current position
+input.close(); // close the file stream (is also done by the destructor)
+output.close(); // close the file stream (is also done by the destructor)
+```
+### Serialization Example
+```c++
+struct Record { int id; char name[10]; /* etc. */ }; // object to be serialized
+void serialize(const Record& rec, std::filesystem::path& path) {
+	std::ofstream f{path, std::ios::binary | std::ios::out};
+	f.write((const char*)&rec, sizeof(Record));
+}
+void deserialize(Record &rec, std::filesystem::path& path) {
+	std::ifstream f{path, std::ios::binary | std::ios::in};
+	f.read((char*)&rec, sizeof(Record));
+}
+```
+### Notes
+- streams will be closes in the destructor (at the end of it lifetime)
+	- no explicit `.close()` required, but should be preferred
+- `tellg()`: tells the position of the get-pointer
+	- get-pointer is pointer to current position in input-stream
+- `tellp()`: tells the position of the put-pointer
+	- put-pointer is pointer to current position in output-stream
+- `seekg(n, std::ios::beg)`:  set stream position `n` bytes from begin of file
+- `seekg(n, std::ios::cur)`: set stream position `n` bytes from current position (same `seekg(n);`)
+- `seekg(-n, std::ios::end)`: set stream position `-n` bytes from end of file (backward)
+	- on `ofstream` these functions are called `seekp(...)`. But they behave the same way
+- stream state flags:
+
+| Flag    | Meaning                          | Function                   |
+| ------- |:--------------------------------:| --------------------------:|
+| goodbit | no error                         | `bool good()`              |
+| badbit  | irrecoverable stream error       | `bool bad()`               |
+| failbit | 
+|I/O operation failed|` |
+|--------------------|--|
+|                    |  |
+bool fail() [operator !]` |
+| eofbit  | end of file reached during input | `bool eof()`               |
+
+- stream modes (to be specified when opening a file)
+
+| Mode   | Meaning                                     |
+| ------ |:-------------------------------------------:|
+| app    | seek to the end before each write operation |
+| binary | open in binary mode                         |
+| in     | open for reading (default for `ifstream`    |
+| out    | open for writing (default for `ofstream`    |
+| trunc  | discard file contents before opening        |
+| ate    | seek to end after open                      |
