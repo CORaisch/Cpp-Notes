@@ -1087,11 +1087,7 @@ void deserialize(Record &rec, std::filesystem::path& path) {
 | ------- |:--------------------------------:| --------------------------:|
 | goodbit | no error                         | `bool good()`              |
 | badbit  | irrecoverable stream error       | `bool bad()`               |
-| failbit | 
-|I/O operation failed|` |
-|--------------------|--|
-|                    |  |
-bool fail() [operator !]` |
+| failbit | I/O operation failed             | `bool fail() [operator !]` |
 | eofbit  | end of file reached during input | `bool eof()`               |
 
 - stream modes (to be specified when opening a file)
