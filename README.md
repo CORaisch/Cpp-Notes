@@ -1118,3 +1118,50 @@ void deserialize(Record &rec, std::filesystem::path& path) {
 | out    | open for writing (default for `ofstream`    |
 | trunc  | discard file contents before opening        |
 | ate    | seek to end after open                      |
+
+## Why Templates "need" to be implemented in Header
+### Notes
+- The compiler compiles each `.cpp` file separately and independently.
+- Also, when instantiating a template, the compiler creates a new class with the given template argument(s). Therefore, the compiler needs to know the template implementation!
+	- If the implementation is in a different `.cpp` file, the compiler cannot see it. All it can see is the header include, which just provides the templated definition.
+	- a template is literally a template. A class template is not a class, it's a recipe for creating a new class for each `T` we encounter
+### Solutions
+- Implement the template class directly in the header. This way the implementation is always included and visible to the compiler
+- Declare the template class in a header, and implement it in a body file as done with usual classes. At the bottom of the header file include the body file containing the implementation:
+```c++
+/* Foo.hpp */
+template <typename T>
+struct Foo
+{
+    void doSomething(T param);
+};
+
+#include "Foo.cpp" // include body file containing implementation
+
+/* Foo.cpp */
+template <typename T>
+void Foo<T>::doSomething(T param)
+{
+    // implementation
+}
+```
+- Explicit Instantiations: Declare the template class in a header, and implement it in a body file as done with usual classes. At the bottom of the body file forward declare instantiations of specific types:
+```c++
+/* Foo.hpp */
+template <typename T>
+struct Foo
+{
+    void doSomething(T param);
+};
+
+/* Foo.cpp */
+template <typename T>
+void Foo<T>::doSomething(T param)
+{
+    // implementation
+}
+// explicit instantiations
+template class Foo<int>;
+template class Foo<float>;
+// You will only be able to use Foo with int or float, as these specific classes will be created in Foo.cpp at compile time
+```
