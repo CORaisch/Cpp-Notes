@@ -760,8 +760,8 @@ A a;
 B b = a; // <- object slicing!
 ```
 ### Note
-- when a child class object is directly (by value) assigned to a base class object
-- the object will be sliced down to the size of the base class object
+- when a child class object is directly (by value) assigned to a base class object 
+  the object will be sliced down to the size of the base class object
 	- if the size of the child class is bigger than the base class, some part of the
 memory would become overwritten which would lead to memory corruption
 	- instead the compiler will slice down the size of the object so it fits the size
@@ -942,6 +942,24 @@ immediately
 - destructors should also marked `noexcept` to force the programmer avoid throwing
 exceptions in the destructor
 	- since _C++11_ all destructors are implicitly marked `noexcept(true)`
+
+## extern
+### Examples
+```c++
+extern int i; // declares that there is a variable named i of type int, defined somewhere else in the program
+extern int j = 0; // defines a variable j with external linkage; the extern keyword is redundant here
+extern void f(); // declares that there is a function f defined somewhere in the program. extern is redundant, but sometimes considered good style.
+extern void f() {;} // defines the function f() declared above. again, the extern keyword is technically redundant here as external linkage is default
+extern const int k = 1; // defines a constant int k with value 1 and external linkage. extern is required because const variables have internal linkage by default!
+```
+### Notes
+- The `extern` keyword tells the compiler that a variable is defined in another source module (outside of the current scope).
+  The linker then finds this actual declaration and sets up the `extern` variable to point to the correct location
+- Variables described by `extern` statements will <u>not<\u> have any space allocated for them, as they should be properly defined elsewhere
+- If a variable is declared `extern`, and the linker finds <u>no<\u> actual declaration of it, it will throw an `"Unresolved external symbol"` error
+- `extern` statements are frequently used to allow data to span the scope of multiple files
+- When applied to function declarations, the additional `"C"` or `"C++"` string literal will change name mangling when compiling under the opposite language
+	- That is, `extern "C" int plain_c_func(int param);` allows C++ code to execute a C library function `plain_c_func`
 
 ## Union
 ### Example
