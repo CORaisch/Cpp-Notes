@@ -1,3 +1,4 @@
+
 # C++: Important Things to Know
 
 ## Uniform Initialization (>=C++11)
@@ -1119,12 +1120,34 @@ void deserialize(Record &rec, std::filesystem::path& path) {
 | trunc  | discard file contents before opening        |
 | ate    | seek to end after open                      |
 
+## Templates
+### Examples
+```c++
+template<typename T>
+T foo(T x) { cout << "type: " << typeid(x).name << endl; return x; }
+/* auto deduction */
+auto r1 = foo(1.2f); // "type: f", r2 is float
+auto r2 = foo(12); // "type: i", r2 is int
+```
+### Notes
+- `templates` are function or class blueprints for the use with arbitrary datatypes
+- an implementation of the `template` will be added by the compiler each time it is used with a new datatype. This process is called template instantiation
+	- this happens for each file the `template` will be invoked from
+	- this happens implicitly,
+		- when a function template is invoked
+		- when an address to a function template is used
+		- at explicit instantiation
+		- when an explicit specialization is created
+- if the `template` is only defined but not used, the compiler will not add a implementation at all to the machine code
+- `templates` are instantiated at compile-time
+
 ## Why Templates "need" to be implemented in Header
 ### Notes
 - The compiler compiles each `.cpp` file separately and independently.
 - Also, when instantiating a template, the compiler creates a new class with the given template argument(s). Therefore, the compiler needs to know the template implementation!
 	- If the implementation is in a different `.cpp` file, the compiler cannot see it. All it can see is the header include, which just provides the templated definition.
 	- a template is literally a template. A class template is not a class, it's a recipe for creating a new class for each `T` we encounter
+- if the template is only defined but not used, the compiler will add no function at all to the source code
 ### Solutions
 - Implement the template class directly in the header. This way the implementation is always included and visible to the compiler
 - Declare the template class in a header, and implement it in a body file as done with usual classes. At the bottom of the header file include the body file containing the implementation:
@@ -1165,3 +1188,37 @@ template class Foo<int>;
 template class Foo<float>;
 // You will only be able to use Foo with int or float, as these specific classes will be created in Foo.cpp at compile time
 ```
+## Template Argument Deduction
+```c++
+template<typename T>
+void foo(T a) { ... }
+template<typename T>
+void foo_mult(T a, T b) { ... }
+```
+### Notes
+- process of deducing the argument types from the given arguments
+	- e.g., `foo(1.2f)` will be deduced to `foo<float>(1.2f)` by the compiler
+- during argument deduction <u>no</u> conversions are performed
+	- meaning, when multiple arguments of type `T` exist, all types must match
+	- e.g., `foo(1.2f, 14)` will throw compilation error: `T` will be deduced to `float` but `14` is `int` and no conversions are performed at deduction
+	- use `static_cast<T>` on arguments, to explicitly type cast: `foo(1.2f, static_cast<float>(14))`
+	- or use explicit instantiation: `foo<float>(1.2f, 14)`. It will now implicitly cast the `int`
+- the template is instantiated after deduction
+
+## Explicit Specialization of Function Templates
+### Example
+```c++
+template<typename T>
+T Max(T x, T y) { return x > y ? x : y; }
+// Explicit Instantiation
+template int Max(int x, int y);
+// Explicit Specialization
+template<> const char* Max(const char* x, const char* y) { return stcmpy(x,y) > 0 ? x : y; }
+```
+### Notes
+- allows to specialize templates for specific types
+- necessary if specific semantics are not supported on specific types or for optimization purposes
+- explicit specified templates are already instantiated!
+	- explicitly specifying a template inside a header file would therefore cause a redefinition error
+- the empty template argument list at `template<>` is required to tell the compiler to explicit specialize
+	- it must be empty!
