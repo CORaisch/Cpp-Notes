@@ -1204,6 +1204,7 @@ void foo_mult(T a, T b) { ... }
 	- use `static_cast<T>` on arguments, to explicitly type cast: `foo(1.2f, static_cast<float>(14))`
 	- or use explicit instantiation: `foo<float>(1.2f, 14)`. It will now implicitly cast the `int`
 - the template is instantiated after deduction
+- for more information see [template argument deduction](https://en.cppreference.com/w/cpp/language/template_argument_deduction)
 
 ## Explicit Specialization of Function Templates
 ### Example
@@ -1301,3 +1302,39 @@ Good good3{12, 42};  // call order: (1) ID(int), (2) ID(int)
 - `std::forward` will ensure that the argument-types will be preserved
 	- `foo(T&& _id) : id{_id}` --> `ID(const ID& _id)`: copy constructor will be called since `_id` is a `lvalue` in the function scope
 	- `foo(T&& _id) : id{std::forward<T>(_id)}` --> `ID(ID&& _id)`: if `foo()` is called by temporary, the move constructor will be called since `_id`'s original argument-type (`rvalue-reference`) is preserved by `std::forward`
+
+## Variadic Templates
+### Example
+```c++
+void Print() { cout << endl; } // recursive base case
+
+template<typename T, typename... Params>
+void Print(T&& element, Params&&... args)
+{
+    cout << element;
+    if (sizeof...(args) != 0) cout << ", ";
+    Print(std::forward<Params>(args)...); // recursive call
+}
+
+int main()
+{
+    Print(1, 3.5, "12", 26.78f); // call Print(int, double, const char*, float)
+    // recursive call stack:
+    // (1) Print(1, {3.5, "12", 26.78f})
+    // (2) Print(3.5, {"12", 26.78f})
+    // (3) Print("12", {26.78f})
+    // (4) Print(26.78f, {})
+    // (5) Print()
+}
+
+```
+### Notes
+- allows to pass a variable number of arguments to a function
+- it is indicated by the ellipses (`...`) operator
+- in `foo(T... t)`, `t` is called a parameter pack
+- parameter packs cannot be iterated, so variadic-functions need to be implemented recursively
+- see [Parameter Pack](https://en.cppreference.com/w/cpp/language/parameter_pack) for more information
+- alternativley C-Style variadic functions can be implemented using macros like va_start, va_arg, etc.
+
+## Variadic Functions (C-Style)
+### TODO
