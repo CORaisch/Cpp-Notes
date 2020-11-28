@@ -1222,3 +1222,82 @@ template<> const char* Max(const char* x, const char* y) { return stcmpy(x,y) > 
 	- explicitly specifying a template inside a header file would therefore cause a redefinition error
 - the empty template argument list at `template<>` is required to tell the compiler to explicit specialize
 	- it must be empty!
+
+## Non-Type Template Arguments
+### Examples
+```c++
+template<int size>
+void foo() { cout << size << endl; }
+template<typename T, int size> // specify size as non-type argument
+T Sum(T (&pArr)[size]) // "T (&pArr)[size]" requests a reference to an array of type T and length size
+{
+	T sum{0};
+	for(int i=0; i<size; ++i) sum += pArr[i];
+	return sum;
+}
+// call sample function foo
+foo<42>(); // out: "42"
+// call Sum which deduce size of array implicitly
+int arr[]{1,2,3,4};
+int sum = Sum(arr);
+```
+### Notes
+- non-type template arguments must be known at compile time
+	- e.g., use constants, statics, or `constexpr`
+	- this further implies that  the non-type template arguments <u>cannot</u> be modified!
+- common use-case is to specify array sizes as non-type template argument (see above)
+	- the size of the array has not to be specified explicitly
+
+## Perfect Forwarding
+### Example
+```c++
+struct ID {
+    int m_id;
+    ID(const int _id) : m_id{_id} { cout << "ID(int)" << endl; }
+    ID(const ID& _id) : m_id{_id.m_id} { cout << "ID(ID&)" << endl; }
+    ID(ID&& _id) noexcept : m_id{_id.m_id} { cout << "ID(ID&&)" << endl; }
+    ~ID() = default;
+};
+
+struct Bad {
+    ID m_id1; ID m_id2;
+    Bad(const ID& _id1, const ID& _id2) : m_id1{_id1}, m_id2{_id2} { }
+    Bad(ID&& _id1, ID&& _id2) : m_id1{std::move(_id1)}, m_id2{std::move(_id2)} { }
+};
+
+struct Good {
+    ID m_id1; ID m_id2;
+    template<typename T1, typename T2>
+    Good(T1&& _id1, T2&& _id2) : m_id1{std::forward<T1>(_id1)}, m_id2{std::forward<T2>(_id2)} { }
+};
+
+/* ... */
+Bad bad1{12, 42}; // call order: (1) ID(int), (2) ID(ID&&)
+
+ID i1{42};         // call order: (1) ID(int)
+Bad bad2{12, i1};  // call order: (2) ID(int), (3) ID(ID&), (4) ID(ID&) => copy-constructor is called
+
+ID i2{42};           // call order: (1) ID(int)
+Good good1{12, i2};  // call order: (2) ID(int), (3) ID(ID&)
+// => 1st arg will be deduced int and m_id1{_id1} will call the constructor of ID,
+//    2nd argument will be deduced to ID& and m_id2{_id2} will call the copy constructor
+
+Good good2{12, ID{42}};  // call order: (1) ID(int), (2) ID(int), (3) ID(ID&&)
+// => 1st arg will be deduced int and m_id1{_id1} will call the constructor of ID,
+//    2nd argument will be deduced to ID&& and m_id2{_id2} will call the move constructor
+
+Good good3{12, 42};  // call order: (1) ID(int), (2) ID(int)
+// => all arguments are forwarded to an inplace constructor call, no overhead calls: perfect forwarding
+```
+### Notes
+- technique that always ensures that move-semantics is used when the function is called with temporaries
+- in the example above, without perfect forwarding in `Bad`, constructors should be implemented for all possible combinations of reference-types
+- in the example above, the call `Good good3{12, 42}` will cause to call the member-constructors only once (inplace)
+	- the same way common STL-container methods like `emplace_back()` are implemented
+- `T&&` in `template<T> foo(T&& _id)` will be deduced as follows:
+	- if `T&` (`lvalue-reference`): `T&&` deduces to `T&` (`lvalue-reference`)
+	- if `T&&` (`rvalue-reference`): `T&&` deduces to `T&&` (`rvalue-reference`)
+	- rule: `&&` will preserve reference-type at deduction
+- `std::forward` will ensure that the argument-types will be preserved
+	- `foo(T&& _id) : id{_id}` --> `ID(const ID& _id)`: copy constructor will be called since `_id` is a `lvalue` in the function scope
+	- `foo(T&& _id) : id{std::forward<T>(_id)}` --> `ID(ID&& _id)`: if `foo()` is called by temporary, the move constructor will be called since `_id`'s original argument-type (`rvalue-reference`) is preserved by `std::forward`
