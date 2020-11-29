@@ -1120,7 +1120,7 @@ void deserialize(Record &rec, std::filesystem::path& path) {
 | trunc  | discard file contents before opening        |
 | ate    | seek to end after open                      |
 
-## Templates
+## Template Functions
 ### Examples
 ```c++
 template<typename T>
@@ -1130,7 +1130,7 @@ auto r1 = foo(1.2f); // "type: f", r2 is float
 auto r2 = foo(12); // "type: i", r2 is int
 ```
 ### Notes
-- `templates` are function or class blueprints for the use with arbitrary datatypes
+- `templates` are function (or class) blueprints for the use with arbitrary datatypes
 - an implementation of the `template` will be added by the compiler each time it is used with a new datatype. This process is called template instantiation
 	- this happens for each file the `template` will be invoked from
 	- this happens implicitly,
@@ -1140,6 +1140,63 @@ auto r2 = foo(12); // "type: i", r2 is int
 		- when an explicit specialization is created
 - if the `template` is only defined but not used, the compiler will not add a implementation at all to the machine code
 - `templates` are instantiated at compile-time
+
+## Template Classes
+### Examples
+```c++
+template<typename T>
+class Stack {
+    T m_buffer[512];
+    int m_top{-1};
+public:
+    Stack() = default;
+    Stack(const T& e) { this->Push(e); }
+
+    void Push(const T& e) { m_buffer[++m_top] = e; }
+    void Pop() { --m_top; }
+    const T& Top() const { return m_buffer[m_top]; }
+    bool isEmpty() const { return m_top == -1; }
+};
+/* ... */
+Stack s0; // ERROR: no parameter list that can be used for type deduction
+Stack<int> s1; // OK: template type explicitly set, default constructor will be called
+Stack s2(100); // OK: will instantiate Stack<int> s2(100). Type is deduced from arguments
+s1.Push(42); // Now Stack::Push will be instantiated
+```
+### Notes
+- like with template functions, class templates will be instantiated on use. However <u>only those functions of the template will be instantiated which are used!</u>
+	- int the example above only the members, the constructors,  and the Push function are instantiated
+- template classes are commonly used for container structures
+- class templates can be used with non-type template arguments (see below)
+
+## Type-Alias Templates to hide Template Arguments
+### Example
+```c++
+/* define template class */
+template<typename T, int size>
+class _Stack {
+    T m_buffer[size];
+    int m_top{-1};
+public:
+    _Stack() = default;
+    _Stack(const T& e) { this->Push(e); }
+
+    void Push(const T& e) { m_buffer[++m_top] = e; }
+    void Pop() { --m_top; }
+    const T& Top() const { return m_buffer[m_top]; }
+    bool isEmpty() const { return m_top == -1; }
+};
+/* type-alias to hide template argument size */
+template<typename T>
+using Stack = _Stack<T,512>; // allows to use Stack with only one template parameter
+/* main */
+Stack<int> s1; // calls type-alias
+
+Stack s2(1.2f); // ERROR: for type-aliased templates the type must be set explicitly
+Stack<float> s3(1.2f); // OK
+```
+### Notes
+- see [this](https://en.cppreference.com/w/cpp/language/type_alias) for more use-cases of type-aliasing templates
 
 ## Why Templates "need" to be implemented in Header
 ### Notes
@@ -1223,6 +1280,109 @@ template<> const char* Max(const char* x, const char* y) { return stcmpy(x,y) > 
 	- explicitly specifying a template inside a header file would therefore cause a redefinition error
 - the empty template argument list at `template<>` is required to tell the compiler to explicit specialize
 	- it must be empty!
+
+## Partial Specialization of Function Templates
+### Example
+```c++
+/* partial specialization of function templates is not legal */
+template<typename T> void foo(const T& x) { ... }
+template<typename T> void f<std::vector<T>>(std::vector<T> const& v) { ... } // ERROR: illegal in C++ !
+
+/* instead, overload the function */
+template<typename T> void f(const std::vector<T>& v) { ... }
+f(std::vector<T>{}); // invokes overloaded function right above
+
+/* if overloading is not possible 1) */
+template<typename T> struct type{}; // empty templated class
+template<typename T> T create(type<T>) { return T(); }
+template<typename T> std::vector<T> create(type<std::vector<int>>) {
+	std::vector<T> v;
+	v.reserve(100);
+	return v;
+}
+```
+### Notes
+- partial specialization of function templates is not supported in C++ natively!
+- instead of partially specializing a template function just overload it
+	- since overloaded template functions are still templates you will also benefit from lazy instantiation
+- if overloading is not possible (T in return-type or nowhere in prototype), then the example above gives a workaround
+- either overload or specialize a template function, avoid mixing both because it can result in unexpected behavior!
+
+## Explicit Specialization of Class Templates
+### Example
+```c++
+/* original class */
+template<typename T>
+class Printer {
+	T* m_pData;
+public:
+	Printer(T* data) : m_pData{data} {}
+	void Print() { cout << *m_data << endl; }
+	T* GetData() { return m_pData; }
+};
+/* explicit specialization of entire class */
+template<> // empty template argument list is required for "explicit" specialization
+class Printer<char*> {
+	char* m_pData;
+public:
+	Printer(char* data) : m_pData{data} {}
+	void Print() { cout << m_pData << endl; }
+	char* GetData() { return m_pData; }
+};
+/* explicit specialization of a single class template function */
+template<> // empty template argument list is required for "explicit" specialization
+void Printer<std::vector<int>>::Print() {
+	for(const auto& x : *m_pData) { cout << x; } cout << endl;
+}
+/* main */
+int data{42};
+Printer<int> p1{data}; // calls original class
+
+char* str{"Test String"};
+Printer<char*> p2{p}; // calls explicit specialization for char*
+p2.Print();
+char* pData = p2.GetData();
+
+std::vector<int> vec{1,2,3,4};
+Printer<std::vector<int>> p3{&vec};
+p3.Print(); // calls exlicit specialized Print-function for std::vector
+```
+### Notes
+- as with function templates, explicit specializations of class templates must start with `template<>` (empty template argument list)
+- when explicitly specializing  a single function of a template class, the definition must always be outside of the class
+
+## Partial Specialization of Class Templates
+### Example
+```c++
+/* orignal template class */
+template<typename T>
+class SmartPointer {
+	T* m_ptr;
+public:
+	SmartPointer(T* _ptr) : m_ptr{_ptr} {}
+	~SmartPointer() { delete m_ptr; }
+	T& operator*() { return *m_ptr; }
+	T* operator->() { return m_ptr; }
+};
+/* partially specialize for use with arrays */
+template<typename T>
+class SmartPointer<T[]> {
+	T* m_ptr;
+public:
+	SmartPointer(T* _ptr) : m_ptr{_ptr} {}
+	~SmartPointer() { delete[] m_ptr; }
+	T& operator[](int idx) { return m_ptr[idx]; }
+};
+/* main */
+SmartPointer<int> s1{new int(42)}; // calls original implementation
+SmartPointer<int[]> s2{new int[5]}; // calls implementation for partially specialized class
+int last = *(s2+4); // ERROR: operator* is not defined on specialized SmartPointer<int[]>. Same goes for operator->
+```
+### Notes
+- note that in the partially specialized example above, the * and -> operators do not exists
+- explicit vs partial specialization
+	- explicit: all template arguments are specialized
+	- partial: a subset of all template arguments are specialized
 
 ## Non-Type Template Arguments
 ### Examples
@@ -1338,3 +1498,4 @@ int main()
 
 ## Variadic Functions (C-Style)
 ### TODO
+- see [this](https://en.cppreference.com/w/c/variadicj)
