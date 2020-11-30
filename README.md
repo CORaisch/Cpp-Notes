@@ -164,6 +164,10 @@ the other object would be left with dangling pointers causing UB
 	- that’s why move semantics must always ensure to leave the original object in a
 valid but undefined state
 		- assign `nullptr` to pointers of the object from which was moved
+- when it comes to automatic type deduction `&&` does not refer to rvalue-references:
+	- `T&&` where `T` is a function-template type refers to a <u>forwarding reference</u>. At [template argument deduction](https://en.cppreference.com/w/cpp/language/template_argument_deduction) these special template-parameters will always preserve their value-category. `T&&` can therefore be deduced to rvalue-reference (when called by rvalue or rvalue-reference) and to lvalue-reference (when called by lvalue or lvalue-reference). These references are mainly used for [perfect forwarding](#perfect-forwarding).
+	- same goes for`auto&&` since it is also a deduced type. However the main application for `auto&&` might be in combination with range-based for loops: In `for(auto&& x : vec) {..}`, the iterator from `vec` can now additionally return rvalues or rvalue-references (which wouldn't bind to non-const `auto&`).
+	- see [this](https://isocpp.org/blog/2012/11/universal-references-in-c11-scott-meyers) for more information
 
 ## Smart Pointers (>=C++11)
 ### std::unique_ptr
@@ -538,6 +542,7 @@ for(variable declaration : range) { statement; }
 int arr[]{1,2,3};
 for(int x : arr) { /* x will be 1, 2, 3 */ }
 for(auto x : {4,5,6}) { /* x will be 4, 5, 6 */ }
+for(auto&& x : 
 ```
 ### Notes
 - prefer ranged for-loops over regular for-loops when:
@@ -1169,35 +1174,6 @@ s1.Push(42); // Now Stack::Push will be instantiated
 - template classes are commonly used for container structures
 - class templates can be used with non-type template arguments (see below)
 
-## Type-Alias Templates to hide Template Arguments
-### Example
-```c++
-/* define template class */
-template<typename T, int size>
-class _Stack {
-    T m_buffer[size];
-    int m_top{-1};
-public:
-    _Stack() = default;
-    _Stack(const T& e) { this->Push(e); }
-
-    void Push(const T& e) { m_buffer[++m_top] = e; }
-    void Pop() { --m_top; }
-    const T& Top() const { return m_buffer[m_top]; }
-    bool isEmpty() const { return m_top == -1; }
-};
-/* type-alias to hide template argument size */
-template<typename T>
-using Stack = _Stack<T,512>; // allows to use Stack with only one template parameter
-/* main */
-Stack<int> s1; // calls type-alias
-
-Stack s2(1.2f); // ERROR: for type-aliased templates the type must be set explicitly
-Stack<float> s3(1.2f); // OK
-```
-### Notes
-- see [this](https://en.cppreference.com/w/cpp/language/type_alias) for more use-cases of type-aliasing templates
-
 ## Why Templates "need" to be implemented in Header
 ### Notes
 - The compiler compiles each `.cpp` file separately and independently.
@@ -1459,6 +1435,7 @@ Good good3{12, 42};  // call order: (1) ID(int), (2) ID(int)
 	- if `T&` (`lvalue-reference`): `T&&` deduces to `T&` (`lvalue-reference`)
 	- if `T&&` (`rvalue-reference`): `T&&` deduces to `T&&` (`rvalue-reference`)
 	- rule: `&&` will preserve reference-type at deduction
+	- `T&&` is called [forwarding-reference](https://en.cppreference.com/w/cpp/language/reference#Forwarding_references)
 - `std::forward` will ensure that the argument-types will be preserved
 	- `foo(T&& _id) : id{_id}` --> `ID(const ID& _id)`: copy constructor will be called since `_id` is a `lvalue` in the function scope
 	- `foo(T&& _id) : id{std::forward<T>(_id)}` --> `ID(ID&& _id)`: if `foo()` is called by temporary, the move constructor will be called since `_id`'s original argument-type (`rvalue-reference`) is preserved by `std::forward`
@@ -1496,6 +1473,172 @@ int main()
 - see [Parameter Pack](https://en.cppreference.com/w/cpp/language/parameter_pack) for more information
 - alternativley C-Style variadic functions can be implemented using macros like va_start, va_arg, etc.
 
+## typedef
+### Examples
+```c++
+typedef unsigned int UINT;
+UINT val{};
+
+typedef long long LLONG;
+LLONG elem{};
+
+typedef std::vector<std::list<Employee>> Teams;
+Teams teams;
+Teams::iterator it = teams.begin();
+
+typedef const char* (*ErrorFun)(int); // ErrorFun becomes type of pointers to functions with prototype 'const char* foo(int)'
+ErrorFun pfn = GetErrorMessage;
+
+typedef int(&IntArray4)[4];
+void foo(IntArray4 array) { for(auto& i : array) cout << i << " "; }
+int arr[4]{1,2,3,4};
+foo(arr);
+```
+### Notes
+- `typedef` defines a type synonym of an existing type
+	- no new types are created!
+	- original type name can still be used
+- this way complicated or long type definitions can be named more compact and more meaningful
+- however usage of `typedef` with templates is limited (see [discussion](#typedef-vs-type-alias) below)
+	- use type alias  over typedef!
+
+## Type Alias (>=C++11)
+### Examples
+```c++
+using UINT = unsigned int;
+UINT val{};
+
+using LLONG = typedef long long;
+LLONG elem{};
+
+using Teams = std::vector<std::list<Employee>>;
+Teams teams;
+Teams::iterator it = teams.begin();
+
+using ErrorFun = const char* (*)(int); // ErrorFun becomes type of pointers to functions with prototype 'const char* foo(int)'
+ErrorFun pfn = GetErrorMessage;
+
+using IntArray4 = int(&)[4];
+void foo(IntArray4 array) { for(auto& i : array) cout << i << " "; }
+int arr[4]{1,2,3,4};
+foo(arr);
+```
+### Notes
+- same as `typedef`, type alias defines a type synonym of an existing type
+ 	- no new types are created!
+	- original type name can still be used
+- the syntax of type alias is meant to be more readable/intuitive
+- type aliases can also be templated which is not possible with `typedef` (see [discussion](#typedef-vs-type-alias) below)
+
+## typedef vs. Type Alias
+### Example
+```c++
+/* in this scenario typedef and type alias both have the same effect */
+typedef std::vector<std::list<std::string>> Names; // typedef 
+using Names_str = std::vector<std::list<std::string>>; // type alias
+
+/* but unlike typedefs, type aliases can be templated */
+template<typename T>
+using Names = std::vector<std::list<T>>; // this is not possible with typedef
+
+Names<std::string> names;
+Names<Names<std::string>> nnames; // templated type aliases can also be nested
+```
+### Notes
+- type alias has several advantages over typedef:
+	- type aliases have uniform syntax which makes the code more readable
+	- type aliases can be templated
+- since type aliases can be templated, they can be used to hide template arguments (see [here](#type-alias-templates-to-hide-template-arguments)) or ...
+- see [here](https://www.nextptr.com/tutorial/ta1193988140/how-cplusplus-using-or-aliasdeclaration-is-better-than-typedef) for more information
+
+## Type Alias to hide Template Arguments
+### Example
+```c++
+/* define template class */
+template<typename T, int size>
+class _Stack {
+    T m_buffer[size];
+    int m_top{-1};
+public:
+    _Stack() = default;
+    _Stack(const T& e) { this->Push(e); }
+
+    void Push(const T& e) { m_buffer[++m_top] = e; }
+    void Pop() { --m_top; }
+    const T& Top() const { return m_buffer[m_top]; }
+    bool isEmpty() const { return m_top == -1; }
+};
+/* type-alias to hide template argument size */
+template<typename T>
+using Stack = _Stack<T,512>; // allows to use Stack with only one template parameter
+/* main */
+Stack<int> s1; // calls type-alias
+
+Stack s2(1.2f); // ERROR: for type-aliased templates the type must be set explicitly
+Stack<float> s3(1.2f); // OK
+```
+### Notes
+- see [this](https://en.cppreference.com/w/cpp/language/type_alias) for more use-cases of type-aliasing templates
+
+## Type Traits
+### Examples
+```c++
+/* check type trait at run time */
+template<typename T>
+T Divide1(T a, T b) {
+	if(!std::is_floating_point<T>::value) throw std::invalid_argument();
+	return a/b; 
+}
+// note:
+// even if 'std::is_floating_point<T>::value' is evaluated at compile time,
+// 'if(!std::is_floating_point<T>::value)' will still be evaluated at run time!
+
+/* check type trait at compile time */
+template<typename T>
+T Divide2(T a, T b) {
+	static_assert(std::is_floating_point<T>::value, "Divide() only supports floating points");
+	return a/b; 
+}
+```
+### Notes
+- type traits enforces characteristics to the types of template arguments
+	- the characteristics of template types are <u>evaluated at compile time</u>
+- they are defined in header `<type_traits>` and they can  return a `bool` or a type
+- Examples are:
+	- `is_void`: checks if a type is `void`
+	- `is_null_pointer`: checks if a type is `std::nullptr_t`
+	- `is_integral`: checks if a type is an integral type (char, short, int, long, etc.)
+	- `is_floating_point`: checks if a type is a floating-point type
+	- `is_array`: checks if a type is an array-type
+	- see more [here](https://en.cppreference.com/w/cpp/header/type_traits)
+- type traits are also useful for template metaprogramming
+- type traits can also be used for non-template arguments (normal types)
+	- `bool b = std::is_integral<int>::value; // b == true`
+- to check the type traits at compile time use [`static_assert`](#static_assert-c11)
+
+## static_assert (>=C++11)
+### Example
+```c++
+/* definition */
+static_assert(bool_constexpr, message);
+static_assert(bool_constexpr);
+
+/* examples */
+static_assert(false, "will never compile");
+template <class T>
+struct A {
+    static_assert(std::is_default_constructible<T>::value, "T requires default constructor");
+    static_assert(std::is_move_constructible<T>::value, "T requires move constructor(s)");
+};
+```
+### Notes
+- like normal asserts but it is evaluated at compile time
+- if an `static_assert` evaluates false the code will not compile
+- a custom message can be passed to the `static_assert` call which will be displayed at compiler error message
+- in the last example above, `class T` is enforced to have default and a move constructors. If `A<T>` is called with `T` that does not fulfill these traits, the code <u>will</u> not compile
+- `static_assert` will of course not be visible in final machine code, they are treated only at compile time
+- see [this](https://en.cppreference.com/w/cpp/language/static_assert) for more information
+
 ## Variadic Functions (C-Style)
 ### TODO
-- see [this](https://en.cppreference.com/w/c/variadicj)
+- see [this](https://en.cppreference.com/w/c/variadic)
