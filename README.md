@@ -1642,3 +1642,142 @@ struct A {
 ## Variadic Functions (C-Style)
 ### TODO
 - see [this](https://en.cppreference.com/w/c/variadic)
+
+## Callbacks: Function Pointers vs. Function Objects
+### Example 
+```c++
+/* sorting algorithm framework */
+template<typename T, int size, typename Comparator>
+void Sort(T (&arr)[size], Comparator comp) // template param Comparator can be deduced to function pointer and functors
+{
+    for(int i=0; i<size-1; ++i)
+        for(int j=0; j<size-1; ++j)
+            if(comp(arr[j],arr[j+1]))
+            {
+                T temp   = std::move(arr[j]);
+                arr[j]   = std::move(arr[j+1]);
+                arr[j+1] = std::move(temp);
+            }
+}
+/* comparator functions */
+bool fAscending(int x, int y) { return x > y; }
+bool fDescending(int x, int y) { return x < y; }
+/* comparator functors */
+struct Ascending { bool operator()(int x, int y) { return x > y; } };
+struct Descending { bool operator()(int x, int y) { return x < y; } };
+/* main */
+int arr[]{1, 5, 3, 7, 2};
+// call with function pointers
+Sort(arr, fAscending); // 1,2,3,4,7
+Sort(arr, fDescending); // 7,4,3,2,1
+// call with function objects
+Sort(arr, Ascending()); // 1,2,3,4,7
+Sort(arr, Descending()); // 7,4,3,2,1
+```
+### Notes
+- using function pointers is hard to optimize for the compiler
+	- the address of the pointer might be determined at run time
+	- this often disallows the compiler to inline the call
+	- function objects on the other side are comparatively easy to optimize/inline
+- a function object (functor) is a `struct`/`class` that overloads the function call operator `operator()(..)`
+	- call to overloaded function call operator resembles a global function call
+	- this way functors can be used as callbacks instead of function pointers 
+	- functors must be specified at compile time and can therefore be optimized better than function pointers by the compiler
+		- functors are often more efficient
+	- since functors are defined in a `struct`/`class` they can provide a state (e.g. keeping track of some entity). This is impossible for function pointers and allows functors a wider range of applications
+		- functors are more flexible to use
+- <u>prefer to use function objects over function pointers</u>
+
+## Lambda Expressions (>=C++11)
+### Examples
+```c++
+/* simple lambda functions */
+[](){ cout<<"this is a inplace lambda expr" << endl; }(); // out: "this is a inplace lambda expr"
+
+[](int x) {
+	x *= 2;
+	[](int x) { cout << x << endl; }(x); // nesting lambdas is possible
+}(5); // out: 10
+
+auto fn = [](){ cout<<"this is a lambda expr in a variable"<<endl; };
+fn(); // out: "this is a lambda expr in a variable"
+
+auto sum1 = [](int x, int y) { return x+y; }; // iff the return type equals the argument types then there is no need to specify the return type
+auto r1 = sum1(4,2); // r1 = 6;
+
+auto sum2 = [](int x, int y)->float { return static_cast<float>(x+y); }; // return type must be specified here since it differs from argument types
+auto r2 = sum1(4,2); // r2 = 6.f;
+
+auto sum3 = [](auto x, auto y) { return x+y; }; // works with any type
+auto r3 = sum(5.2f,4.8f); // r3 = 10.f
+
+template<typename T, int size, typename Callback>
+void ForEach(T (&arr)[size], Callback operation) { // template param Callback can be deduced to function pointer and functors/lambda expressions 
+	for(int i=0; i<size; ++i) operation(arr[i]);
+}
+int arr[]{1,2,3,4};
+ForEach(arr, [](auto x){ cout<< x << " "; }); // call lambda inplace
+
+/* lambda functions with references */
+ForEach(arr, [](auto& x){ x +=1; }); // arr: 2,3,4,5
+
+/* lambda functions with capture list */
+int offset{5};
+ForEach(arr, [offset](auto& x){ x +=offset; }); // arr: 6,7,8,9
+
+ForEach(arr, [offset](auto& x){ x +=offset; offset++; }); // ERROR lambda functions are const by default => offset cannot be modified
+
+// mutable removes constness
+ForEach(arr, [offset](auto& x)mutable { x +=offset; offset++; }); // arr: 6,8,10,12
+
+// capture variable by reference so that captured values can be returned from lambda
+int sum{};
+ForEach(arr, [&sum](auto& x)mutable { sum += x; });
+cout << sum << endl; // out: 10
+
+int sum2{};
+ForEach(arr, [&](auto& x)mutable { sum2 += x; }); // [&] captures all variables in enclosing scope by reference -> all variables in scope can be used and modified inside lambda
+cout << sum2 << endl; // out: 10
+
+// [=] captures all variables in enclosing scope by value
+ForEach(arr, [=](auto& x) { cout<<x+offset<<" "; }); // arr: 6,7,8,9
+
+int sum3{};
+ForEach(arr, [=,&sum3](auto& x)mutable { sum3 += x+offset;  }); // [=,&sum3] captures all scope variables by value except sum3 which is captured by reference
+cout << sum3 << endl; // out: 30
+
+int sum4{};
+ForEach(arr, [&,offset](auto& x)mutable { sum4 += x+offset;  }); // [&, offset] captures all scope variables by reference except offset which is captured by value
+cout << sum4 << endl; // out: 30
+
+/* generalized capture (>=C++14) */
+// trivial example
+[y=sum4](int x) { return y+x; }(5); // out: 35
+
+// C++14 now supports capturing a varibale by move
+auto u = std::make_unique<int>(2);
+ForEach(arr, [o=std::move(u)](auto x){ cout << x+(*o) << " "; }); // arr: 3,4,5,6
+```
+### Notes
+- a lambda expression defines an anonymous function object
+- it is an syntactic shortcut for a function pointer
+	- internally a `struct` is created and the lambda function will be implemented inside `operator()(..)`
+- can be used for simple callbacks without internal state
+- lambda expression can be passed as argument
+- lambda expression can accept parameters and return values
+- lambda expressions can capture variables from the enclosing scope
+	- `[var]`: capture variable `var` by value
+	- `[=]`: capture all scope variables by value
+	- `[&var]`: capture `var` by reference
+	- `[&]`: capture all scope variables by reference
+	- `[&,var]`: capture all scope variables by reference except `var` which is captured by value
+ 	- `[=,&var]`: capture all scope variables by value except `var` which is captured by reference
+ 	- `[this]`: capture all member variables (i.e. capture `this`) if lambda is used inside a member function 
+ 	- note: <u>global and static variables are automatically captured</u>
+ 	- note: only lambda expression with empty capture list (`[]`) can implicitly be decomposed to a function pointer
+	 	- <u>if a lambda is passed to a function pointer argument, the capture list must be empty (`[]`)!</u>
+- the capture list can only capture variables which are defined in the same scope <u>before</u> the lambda call
+	- this holds even when capturing all scope variables with `[=]` or `[&]`
+- C++14 added generalized capture  support which allows to define a new variable inside the capture list
+	- this now allows to capture variables by move
+- <u>when possible prefer lambda expression over function objects</u>
