@@ -343,7 +343,7 @@ evaluated at compile time
 - use const to indicate that the value cannot be modified
 - use constexpr to demand evaluation at compile time
 	- use constexpr for optimization purposes only
-  
+
 ## C++ Types (>=C++11)
 ### Object types
 - Scalars
@@ -542,7 +542,7 @@ for(variable declaration : range) { statement; }
 int arr[]{1,2,3};
 for(int x : arr) { /* x will be 1, 2, 3 */ }
 for(auto x : {4,5,6}) { /* x will be 4, 5, 6 */ }
-for(auto&& x : 
+for(auto&& x :
 ```
 ### Notes
 - prefer ranged for-loops over regular for-loops when:
@@ -644,7 +644,7 @@ will not be accessible in A
 	- `struct A : B { …};` <=> `struct A : private B { … };`
 	- independent of whether `B` is class or struct
 - multiple inheritance possible: `class A : public B : private C { ... };`
-  
+
 ## Struct and Class
 - only difference to class:
 	- Default member access of `struct` is public
@@ -656,7 +656,7 @@ and inheritance and polymorphism
 implementation
 	- use constructor delegation `A::A(...) : B(...) {}`
 	- or force compiler to inherit constructors (_C++11_): `class A : B { public: using B::B; .. };`
-  
+
 ## Abstract classes
 ### Example
 ```c++
@@ -766,7 +766,7 @@ A a;
 B b = a; // <- object slicing!
 ```
 ### Note
-- when a child class object is directly (by value) assigned to a base class object 
+- when a child class object is directly (by value) assigned to a base class object
   the object will be sliced down to the size of the base class object
 	- if the size of the child class is bigger than the base class, some part of the
 memory would become overwritten which would lead to memory corruption
@@ -808,7 +808,7 @@ the types at runtime.
 	- only use it on polymorphic types <u>and</u> only if necessary to <u>avoid overhead</u>
 	- <u>better</u>: adapt your design exploiting polymorphism
 - `typeid(*p).name()` will only output the name of the pointed class, if that is polymorphic
-  
+
 ## Constructor Delegation
 ### Syntax
 ```c++
@@ -820,7 +820,7 @@ private:
 	int member;
 };
 ```
-  
+
 ## Post- vs. Pre-Increment
 ### pre-increment, ++a
 ```c++
@@ -925,7 +925,7 @@ they are stack-objects and their destructor will be called)
 stack unwinding, the program will immediately terminate
 	- if you cannot avoid throwing an exception in a destructor, than handle the exception
 inside the destructor
-  
+
 ## noexcept (>=C++11)
 ### Notes
 - can be applied to functions in declaration and definition
@@ -961,8 +961,8 @@ extern const int k = 1; // defines a constant int k with value 1 and external li
 ### Notes
 - The `extern` keyword tells the compiler that a variable is defined in another source module (outside of the current scope).
   The linker then finds this actual declaration and sets up the `extern` variable to point to the correct location
-- Variables described by `extern` statements will <u>not<\u> have any space allocated for them, as they should be properly defined elsewhere
-- If a variable is declared `extern`, and the linker finds <u>no<\u> actual declaration of it, it will throw an `"Unresolved external symbol"` error
+- Variables described by `extern` statements will <u>not</u> have any space allocated for them, as they should be properly defined elsewhere
+- If a variable is declared `extern`, and the linker finds <u>no</u> actual declaration of it, it will throw an `"Unresolved external symbol"` error
 - `extern` statements are frequently used to allow data to span the scope of multiple files
 - When applied to function declarations, the additional `"C"` or `"C++"` string literal will change name mangling when compiling under the opposite language
 	- That is, `extern "C" int plain_c_func(int param);` allows C++ code to execute a C library function `plain_c_func`
@@ -1473,6 +1473,101 @@ int main()
 - see [Parameter Pack](https://en.cppreference.com/w/cpp/language/parameter_pack) for more information
 - alternativley C-Style variadic functions can be implemented using macros like va_start, va_arg, etc.
 
+## Dynamic vs. Static Dispatch
+### Exmaples
+```c++
+/* Version 1: Statically programm two classes, only for reference */
+
+struct Camera1V1
+{
+  void Open() { cout << "Open Camera 1" << endl; }
+  void Close() { cout << "Close Camera 1" << endl; }
+  void GetFrame() { cout << "New Frame Camera 1" << endl; }
+};
+
+struct Camera2V1
+{
+  void Open() { cout << "Open Camera 2" << endl; }
+  void Close() { cout << "Close Camera 2" << endl; }
+  void GetFrame() { cout << "New Frame Camera 2" << endl; }
+};
+
+// Usage:
+
+Camera1V1 cam1;
+Camera2V1 cam2;
+cam1.Open();
+cam1.GetFrame();
+cam2.GetFrame();
+
+/* Version 2: Dynamic Subclassing */
+
+struct CameraBaseDynamic
+{
+  void Open() { cout << "Open Camera" << endl; }
+  void Close() { cout << "Close Camera" << endl; }
+
+  virtual void GetFrame() = 0;
+};
+
+struct Camera1V2 : public CameraBaseDynamic
+{
+  virtual void GetFrame() override final { cout << "New Frame Camera 1" << endl; }
+};
+
+struct Camera2V2 : public CameraBaseDynamic
+{
+  virtual void GetFrame() override final { cout << "New Frame Camera 2" << endl; }
+};
+
+// Usage:
+
+CameraBaseDynamic* cam {}; // == CameraBase* cam = nullptr;
+cam = new Camera1V2();
+cam->Open();
+cam->GetFrame();
+cam = new Camera2V2();
+cam->GetFrame();
+
+/* Version 3: Static Subclassing */
+
+template<typename T>
+struct CameraBaseStatic
+{
+  void Open() { cout << "Open Camera" << endl; }
+  void Close() { cout << "Close Camera" << endl; }
+
+  void GetFrame()
+  {
+    static_cast<T*>(this)->GetFrameImpl();
+  }
+};
+
+struct Camera1V3 : public CameraBaseStatic<Camera1V3>
+{
+  void GetFrameImpl() { cout << "New Frame Camera 1" << endl; }
+};
+
+struct Camera2V3 : public CameraBaseStatic<Camera2V3>
+{
+  void GetFrameImpl() { cout << "New Frame Camera 2" << endl; }
+};
+
+Camera1V3 cam;
+cam.Open();
+cam.GetFrame();
+```
+### Notes
+#### Pros
+- Using dynamic or static Subclassing allows **code reuse**.
+- Static subclassing does **not** use dynamic dispatch.
+#### Cons
+- Static subclassing has strange side effects:
+  - For `std < c++20` we have no way to enforce an interface on derived classes
+    (from c++20 onwards `concepts` can be used in this case)
+  - For `std < c++20` impossible to use the same name for derived and base
+    function (see `CameraBaseStatic::GetFrame` and `Camera1V3::GetFrameImpl`)
+
 ## typedef
 ### Examples
 ```c++
@@ -1534,7 +1629,7 @@ foo(arr);
 ### Example
 ```c++
 /* in this scenario typedef and type alias both have the same effect */
-typedef std::vector<std::list<std::string>> Names; // typedef 
+typedef std::vector<std::list<std::string>> Names; // typedef
 using Names_str = std::vector<std::list<std::string>>; // type alias
 
 /* but unlike typedefs, type aliases can be templated */
@@ -1587,7 +1682,7 @@ Stack<float> s3(1.2f); // OK
 template<typename T>
 T Divide1(T a, T b) {
 	if(!std::is_floating_point<T>::value) throw std::invalid_argument();
-	return a/b; 
+	return a/b;
 }
 // note:
 // even if 'std::is_floating_point<T>::value' is evaluated at compile time,
@@ -1597,7 +1692,7 @@ T Divide1(T a, T b) {
 template<typename T>
 T Divide2(T a, T b) {
 	static_assert(std::is_floating_point<T>::value, "Divide() only supports floating points");
-	return a/b; 
+	return a/b;
 }
 ```
 ### Notes
@@ -1644,7 +1739,7 @@ struct A {
 - see [this](https://en.cppreference.com/w/c/variadic)
 
 ## Callbacks: Function Pointers vs. Function Objects
-### Example 
+### Example
 ```c++
 /* sorting algorithm framework */
 template<typename T, int size, typename Comparator>
@@ -1681,7 +1776,7 @@ Sort(arr, Descending()); // 7,4,3,2,1
 	- function objects on the other side are comparatively easy to optimize/inline
 - a function object (functor) is a `struct`/`class` that overloads the function call operator `operator()(..)`
 	- call to overloaded function call operator resembles a global function call
-	- this way functors can be used as callbacks instead of function pointers 
+	- this way functors can be used as callbacks instead of function pointers
 	- functors must be specified at compile time and can therefore be optimized better than function pointers by the compiler
 		- functors are often more efficient
 	- since functors are defined in a `struct`/`class` they can provide a state (e.g. keeping track of some entity). This is impossible for function pointers and allows functors a wider range of applications
@@ -1712,7 +1807,7 @@ auto sum3 = [](auto x, auto y) { return x+y; }; // works with any type
 auto r3 = sum(5.2f,4.8f); // r3 = 10.f
 
 template<typename T, int size, typename Callback>
-void ForEach(T (&arr)[size], Callback operation) { // template param Callback can be deduced to function pointer and functors/lambda expressions 
+void ForEach(T (&arr)[size], Callback operation) { // template param Callback can be deduced to function pointer and functors/lambda expressions
 	for(int i=0; i<size; ++i) operation(arr[i]);
 }
 int arr[]{1,2,3,4};
@@ -1772,7 +1867,7 @@ ForEach(arr, [o=std::move(u)](auto x){ cout << x+(*o) << " "; }); // arr: 3,4,5,
 	- `[&]`: capture all scope variables by reference
 	- `[&,var]`: capture all scope variables by reference except `var` which is captured by value
  	- `[=,&var]`: capture all scope variables by value except `var` which is captured by reference
- 	- `[this]`: capture all member variables (i.e. capture `this`) if lambda is used inside a member function 
+ 	- `[this]`: capture all member variables (i.e. capture `this`) if lambda is used inside a member function
  	- note: <u>global and static variables are automatically captured</u>
  	- note: only lambda expression with empty capture list (`[]`) can implicitly be decomposed to a function pointer
 	 	- <u>if a lambda is passed to a function pointer argument, the capture list must be empty (`[]`)!</u>
